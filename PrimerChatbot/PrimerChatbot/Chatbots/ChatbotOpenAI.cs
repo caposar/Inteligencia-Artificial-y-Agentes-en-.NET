@@ -1,9 +1,9 @@
-﻿using OpenAI.Chat;
+﻿using Microsoft.Extensions.AI;
 using System;
 using System.Collections.Generic;
 using System.Text;
 
-namespace PrimerChatbot
+namespace PrimerChatbot.Chatbots
 {
     /// <summary>
     /// Chatbot usando la API de OpenAI (GPT).
@@ -16,7 +16,7 @@ namespace PrimerChatbot
         {
             var modelo = "gpt-5.4-nano";
             var llave = Environment.GetEnvironmentVariable("OPENAI_LLAVE");
-            var cliente = new ChatClient(modelo, llave);
+            var cliente = new OpenAI.Chat.ChatClient(modelo, llave).AsIChatClient();
 
             Console.WriteLine("IA: ¡Hola! Puedes escribir tus preguntas o presionar Enter para salir");
             Console.WriteLine();
@@ -41,7 +41,7 @@ namespace PrimerChatbot
     Las respuestas deben ser en texto plano, no usar formatos como markdown.
     """;
 
-            mensajes.Add(new SystemChatMessage(systemPromptGeneral));
+            mensajes.Add(new ChatMessage(role: ChatRole.System, systemPromptCsharp));
 
             while (true)
             {
@@ -56,23 +56,18 @@ namespace PrimerChatbot
                     break;
                 }
 
-                mensajes.Add(new UserChatMessage(entrada));
+                mensajes.Add(new ChatMessage(role: ChatRole.User, entrada));
 
                 Console.WriteLine();
                 Console.Write($"IA: ");
 
-                var stream = cliente.CompleteChatStreamingAsync(mensajes);
-
-                await foreach (var actualizacion in stream)
+                await foreach (var fragmento in cliente.GetStreamingResponseAsync(mensajes))
                 {
-                    foreach (var contenido in actualizacion.ContentUpdate)
-                    {
-                        sb.Append(contenido.Text);
-                        Console.Write(contenido.Text);
-                    }
+                    sb.Append(fragmento);
+                    Console.Write(fragmento);
                 }
 
-                mensajes.Add(new AssistantChatMessage(sb.ToString()));
+                mensajes.Add(new ChatMessage(role: ChatRole.Assistant, sb.ToString()));
 
                 Console.WriteLine();
                 Console.WriteLine();

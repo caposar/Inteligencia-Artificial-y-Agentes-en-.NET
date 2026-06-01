@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using System.Text;
 using Environment = System.Environment;
 
-namespace PrimerChatbot
+namespace PrimerChatbot.Chatbots
 {
     /// <summary>
     /// Chatbot usando la API de Google Gemini.

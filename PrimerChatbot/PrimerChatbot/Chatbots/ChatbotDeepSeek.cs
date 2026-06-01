@@ -1,35 +1,35 @@
-﻿using OpenAI.Chat;
+﻿using Microsoft.Extensions.AI;
 using System;
 using System.Collections.Generic;
 using System.Text;
 
-namespace PrimerChatbot
+namespace PrimerChatbot.Chatbots
 {
     /// <summary>
-    /// Chatbot usando la API de Mistral AI (compatible con el SDK de OpenAI).
-    /// Registro y API Key gratuita: https://console.mistral.ai (requiere verificar teléfono, sin tarjeta)
-    /// Modelos disponibles: https://docs.mistral.ai/getting-started/models/models_overview/
+    /// Chatbot usando la API de DeepSeek (compatible con el SDK de OpenAI).
+    /// Registro y API Key: https://platform.deepseek.com (5M tokens gratis al registrarse)
+    /// Modelos disponibles: https://api-docs.deepseek.com/
     /// </summary>
-    internal class ChatbotMistral
+    internal class ChatbotDeepSeek
     {
         internal static async Task Correr()
         {
-            var llave = Environment.GetEnvironmentVariable("MISTRAL_LLAVE");
+            var llave = Environment.GetEnvironmentVariable("DEEPSEEK_LLAVE");
 
-            // Mistral es compatible con el SDK de OpenAI, solo cambia la URL base
+            // Modelos disponibles:
+            // "deepseek-v4-flash"  ← recomendado, rápido y económico
+            // "deepseek-v4-pro"    ← más potente, ideal para razonamiento complejo
+            // NOTA: "deepseek-chat" y "deepseek-reasoner" se deprecan el 24/07/2026
+            var modelo = "deepseek-v4-flash";
+
+            // DeepSeek es compatible con el SDK de OpenAI, solo cambia la URL base
             var credencial = new System.ClientModel.ApiKeyCredential(llave!);
             var opciones = new OpenAI.OpenAIClientOptions
             {
-                Endpoint = new Uri("https://api.mistral.ai/v1")
+                Endpoint = new Uri("https://api.deepseek.com/v1")
             };
 
-            // Modelos disponibles en el free tier:
-            // "mistral-small-latest"  ← recomendado, equilibrio entre velocidad y capacidad
-            // "open-mistral-nemo"     ← más liviano, 128K contexto, ideal para tareas simples
-            // "codestral-latest"      ← especializado en código
-            var modelo = "mistral-small-latest";
-
-            var cliente = new ChatClient(modelo, credencial, opciones);
+            var cliente = new OpenAI.Chat.ChatClient(modelo, credencial, opciones).AsIChatClient();
 
             Console.WriteLine("IA: ¡Hola! Puedes escribir tus preguntas o presionar Enter para salir");
             Console.WriteLine();
@@ -54,7 +54,7 @@ namespace PrimerChatbot
     Las respuestas deben ser en texto plano, no usar formatos como markdown.
     """;
 
-            mensajes.Add(new SystemChatMessage(systemPromptGeneral));
+            mensajes.Add(new ChatMessage(role: ChatRole.System, systemPromptCsharp));
 
             while (true)
             {
@@ -69,23 +69,18 @@ namespace PrimerChatbot
                     break;
                 }
 
-                mensajes.Add(new UserChatMessage(entrada));
+                mensajes.Add(new ChatMessage(role: ChatRole.User, entrada));
 
                 Console.WriteLine();
                 Console.Write("IA: ");
 
-                var stream = cliente.CompleteChatStreamingAsync(mensajes);
-
-                await foreach (var actualizacion in stream)
+                await foreach (var fragmento in cliente.GetStreamingResponseAsync(mensajes))
                 {
-                    foreach (var contenido in actualizacion.ContentUpdate)
-                    {
-                        sb.Append(contenido.Text);
-                        Console.Write(contenido.Text);
-                    }
+                    sb.Append(fragmento);
+                    Console.Write(fragmento);
                 }
 
-                mensajes.Add(new AssistantChatMessage(sb.ToString()));
+                mensajes.Add(new ChatMessage(role: ChatRole.Assistant, sb.ToString()));
 
                 Console.WriteLine();
                 Console.WriteLine();
