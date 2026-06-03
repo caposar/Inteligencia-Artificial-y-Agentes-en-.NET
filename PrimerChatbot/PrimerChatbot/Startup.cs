@@ -2,6 +2,8 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using PrimerChatbot.Servicios;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -18,6 +20,16 @@ namespace PrimerChatbot
             string llaveGemini = System.Environment.GetEnvironmentVariable("GEMINI_LLAVE")!;
             string llaveMistral = System.Environment.GetEnvironmentVariable("MISTRAL_LLAVE")!;
             string llaveDeepSeek = System.Environment.GetEnvironmentVariable("DEEPSEEK_LLAVE")!;
+            string llaveOpenRouter = System.Environment.GetEnvironmentVariable("OPENROUTER_LLAVE") ?? "";
+            string llaveGitHub = System.Environment.GetEnvironmentVariable("GITHUB_LLAVE") ?? "";
+
+            builder.Services.AddTransient<IServicioClima, ServicioClimaOpenWeather>();
+            builder.Services.AddTransient<ServicioEvaluaCondiciones>();
+            builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.None);
+            builder.Services.AddHttpClient();
+
+            builder.Services.AddTransient<ServicioEnviarCorreoFalso>();
+            builder.Services.AddTransient<ServicioObtenerCorreoFalso>();
 
             builder.Services.AddSingleton<IChatClient>(sp =>
             {
@@ -43,7 +55,7 @@ namespace PrimerChatbot
                     "groq" => new OpenAI.Chat.ChatClient(
                         modelo ?? "llama-3.3-70b-versatile",
                         new System.ClientModel.ApiKeyCredential(llaveGroq),
-                        new OpenAI.OpenAIClientOptions { Endpoint = new Uri("https://api.groq.com/openai/v1") })
+                        new OpenAI.OpenAIClientOptions { Endpoint = new Uri("https://api.groq.com/openai/v1/") })
                         .AsIChatClient(),
 
                     // Gemini: compatible con OpenAI. Modelos: https://ai.google.dev/gemini-api/docs/models
@@ -57,15 +69,37 @@ namespace PrimerChatbot
                     "mistral" => new OpenAI.Chat.ChatClient(
                         modelo ?? "mistral-small-latest",
                         new System.ClientModel.ApiKeyCredential(llaveMistral),
-                        new OpenAI.OpenAIClientOptions { Endpoint = new Uri("https://api.mistral.ai/v1") })
+                        new OpenAI.OpenAIClientOptions { Endpoint = new Uri("https://api.mistral.ai/v1/") })
                         .AsIChatClient(),
 
                     // DeepSeek: compatible con OpenAI. Modelos: https://api-docs.deepseek.com/
                     "deepseek" => new OpenAI.Chat.ChatClient(
                         modelo ?? "deepseek-v4-flash",
                         new System.ClientModel.ApiKeyCredential(llaveDeepSeek),
-                        new OpenAI.OpenAIClientOptions { Endpoint = new Uri("https://api.deepseek.com/v1") })
+                        new OpenAI.OpenAIClientOptions { Endpoint = new Uri("https://api.deepseek.com/v1/") })
                         .AsIChatClient(),
+
+                    // OpenRouter: decenas de modelos gratuitos con sufijo ":free"
+                    // Registro: https://openrouter.ai
+                    // Modelos gratuitos: https://openrouter.ai/models?q=free
+                    "openrouter" => new OpenAI.Chat.ChatClient(
+                        modelo ?? "openrouter/free",  // ← router automático de modelos gratuitos
+                        new System.ClientModel.ApiKeyCredential(llaveOpenRouter),
+                        new OpenAI.OpenAIClientOptions { Endpoint = new Uri("https://openrouter.ai/api/v1/") })
+                        .AsIChatClient(),
+
+                    // GitHub Models: acceso gratis a GPT-4o, Claude, Llama y más con cuenta de GitHub
+                    // Registro: https://github.com/marketplace/models
+                    "github" => new OpenAI.Chat.ChatClient(
+                        modelo ?? "gpt-4o-mini",
+                        new System.ClientModel.ApiKeyCredential(llaveGitHub),
+                        new OpenAI.OpenAIClientOptions { Endpoint = new Uri("https://models.inference.ai.azure.com/") })
+                        .AsIChatClient(),
+
+                    // Ollama: Ejecución local en tu PC (requiere tener ollama ejecutándose)
+                    //"ollama" => new Microsoft.Extensions.AI.OllamaChatClient(
+                    //    new Uri("http://localhost:11434"),
+                    //    modelo ?? "llama3.2"),
 
                     _ => throw new ArgumentException($"Proveedor desconocido: {proveedor}. Opciones: openai, claude, groq, gemini, mistral, deepseek")
                 };
@@ -75,6 +109,19 @@ namespace PrimerChatbot
                 {
                     o.MaxOutputTokens = 2000;
                     o.Temperature = 0.7f;
+
+                    /* * Evita llamadas en paralelo forzando la ejecución secuencial.
+                     * Soluciona el error al capturar aprobaciones sensibles con .FirstOrDefault()
+                     * y evita que el SDK pida un permiso global por un lote de herramientas mezcladas.
+                     * (comportamiento muy común en modelos como Llama 3.3 de Groq).
+                     * 
+                     * * TODO: Refactorizar el manejo de aprobaciones en Chatbot.cs para iterar y 
+                     * procesar múltiples herramientas a la vez. Al implementar esa solución, 
+                     * se debe eliminar la siguiente línea o cambiarla a 'true'.
+                     */
+                    o.AllowMultipleToolCalls = false;
+
+                    o.Tools = [.. Tools.Tools.ObtenerTools(sp)];
                 })
                 //.Use(async (mensajes, opciones, next, cancellationToken) =>
                 //{
@@ -91,6 +138,14 @@ namespace PrimerChatbot
                 //    Console.ResetColor();
 
                 //})
+                .UseFunctionInvocation(null, c =>
+                {
+                    c.IncludeDetailedErrors = true;
+                })
+                .Use(async (messages, options, next, cancellationToken) =>
+                {
+                    await next(messages, options, cancellationToken);
+                })
                 .Build(sp);
             });
         }
