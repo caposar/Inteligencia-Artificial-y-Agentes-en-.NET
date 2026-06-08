@@ -20,7 +20,7 @@ namespace BlazorIA.Servicios.Chatbots
 
         public ChatbotReal(IChatClientFactory chatClientFactory, ChatOptions chatOptions)
         {
-            modelo = ModelosIA.ObtenerModeloPorDefecto;
+            modelo = ModelosIA.ModeloPorDefecto;
             this.chatClientFactory = chatClientFactory;
             this.chatOptions = chatOptions;
             var systemPromptGeneral = """
@@ -82,6 +82,10 @@ namespace BlazorIA.Servicios.Chatbots
             catch (OperationCanceledException)
             {
                 ManejarOperacionCancelada();
+            }
+            catch (Exception ex)
+            {
+                ManejarExcepcionGeneral(ex);
             }
             finally
             {
@@ -233,6 +237,10 @@ namespace BlazorIA.Servicios.Chatbots
             {
                 ManejarOperacionCancelada();
             }
+            catch (Exception ex)
+            {
+                ManejarExcepcionGeneral(ex);
+            }
             finally
             {
                 ManejarFinally();
@@ -251,6 +259,29 @@ namespace BlazorIA.Servicios.Chatbots
         public void SetearModelo(string modelo)
         {
             this.modelo = modelo;
+        }
+
+        private void ManejarExcepcionGeneral(Exception ex)
+        {
+            if (Conversacion.Count > 0 && Conversacion[^1].Rol == RolMensaje.IA)
+            {
+                Conversacion[^1].Texto = $"⚠️ Error de conexión con el proveedor: {ex.Message}";
+            }
+            else
+            {
+                Conversacion.Add(new MensajeChatUI
+                {
+                    Rol = RolMensaje.Sistema,
+                    Texto = $"⚠️ Error crítico: {ex.Message}"
+                });
+            }
+
+            // Opcional: Eliminar el último mensaje interno de la lista para que 
+            // el historial de la IA no quede corrupto y el usuario pueda reintentar.
+            if (mensajes.Count > 0 && mensajes[^1].Role == ChatRole.User)
+            {
+                mensajes.RemoveAt(mensajes.Count - 1);
+            }
         }
     }
 }

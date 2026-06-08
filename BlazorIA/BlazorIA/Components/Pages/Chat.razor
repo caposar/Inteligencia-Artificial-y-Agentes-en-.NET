@@ -15,7 +15,20 @@
         {
             <div class="mensaje @ObtenerClaseCSS(mensaje.Rol)">
                 <div class="mensaje-header">@ObtenerEtiqueta(mensaje.Rol)</div>
-                <div class="mensaje-body">@mensaje.Texto</div>
+                <div class="mensaje-body">
+                    @if (string.IsNullOrWhiteSpace(mensaje.Texto) && ChatSession.EstaProcesando && mensaje.Rol == RolMensaje.IA)
+                    {
+                        <div class="indicador-escribiendo">
+                            <span class="punto"></span>
+                            <span class="punto"></span>
+                            <span class="punto"></span>
+                        </div>
+                    }
+                    else
+                    {
+                        @mensaje.Texto
+                    }
+                </div>
             </div>
         }
 
@@ -57,15 +70,24 @@
         <div class="entrada-chat">
 
             <select class="form-select selector-modelo"
-                    @bind="modeloSeleccionado"
+                    @bind="ProveedorSeleccionado"
+                    @bind:after="OnCambioProveedor"
+                    disabled="@(ChatSession.EstaProcesando || ChatSession.AprobacionPendiente is not null)">
+                @foreach (var prov in ModelosIA.ObtenerProveedores())
+                {
+                    <option value="@prov">@ModelosIA.FormatearNombreProveedor(prov)</option>
+                }
+            </select>
+
+            <select class="form-select selector-modelo"
+                    @bind="ModeloSeleccionado"
                     @bind:after="OnCambioModelo"
                     disabled="@(ChatSession.EstaProcesando || ChatSession.AprobacionPendiente is not null)">
-                @foreach (var item in modelosDisponibles)
+                @foreach (var item in ModelosDisponibles)
                 {
                     <option value="@item">@item</option>
                 }
             </select>
-
 
             <input class="form-control"
                    @bind="modelo.Texto"
@@ -94,12 +116,23 @@
     private ElementReference contenedorMensajes;
     private bool necesitaScroll;
 
-    private readonly List<string> modelosDisponibles = ModelosIA.ObtenerModelosDisponibles().ToList();
-    private string modeloSeleccionado = ModelosIA.ObtenerModeloPorDefecto;
+    // --- NUEVAS VARIABLES DE ESTADO PARA LA CASCADA ---
+    private string ProveedorSeleccionado { get; set; } = ModelosIA.ProveedorPorDefecto;
+    private string ModeloSeleccionado { get; set; } = ModelosIA.ModeloPorDefecto;
+    private IEnumerable<string> ModelosDisponibles { get; set; } = [];
 
+    // Se ejecuta al cambiar el primer combo (Proveedor)
+    private void OnCambioProveedor()
+    {
+        ModelosDisponibles = ModelosIA.ObtenerModelosPorProveedor(ProveedorSeleccionado);
+        ModeloSeleccionado = ModelosDisponibles.FirstOrDefault() ?? string.Empty;
+        ChatSession.SetearModelo(ModeloSeleccionado);
+    }
+
+    // Se ejecuta al cambiar el segundo combo (Modelo)
     private void OnCambioModelo()
     {
-        ChatSession.SetearModelo(modeloSeleccionado);
+        ChatSession.SetearModelo(ModeloSeleccionado);
     }
 
     private bool DeshabilitarEnvio =>
@@ -109,6 +142,10 @@
 
     protected override void OnInitialized()
     {
+        // Cargamos los datos iniciales al abrir la pantalla
+        ModelosDisponibles = ModelosIA.ObtenerModelosPorProveedor(ProveedorSeleccionado);
+        ChatSession.SetearModelo(ModeloSeleccionado);
+
         ChatSession.OnChange += ManejarCambioChat;
     }
 

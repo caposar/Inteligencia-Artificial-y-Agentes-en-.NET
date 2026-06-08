@@ -81,3 +81,38 @@
     width: 220px;
     flex-shrink: 0;
 }
+
+/* Animación de "Pensando..." para la IA */
+.indicador-escribiendo {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 24px;
+    padding-left: 4px;
+}
+
+.punto {
+    width: 8px;
+    height: 8px;
+    background-color: #8e8e93;
+    border-radius: 50%;
+    animation: salto 1.4s infinite ease-in-out both;
+}
+
+    .punto:nth-child(1) {
+        animation-delay: -0.32s;
+    }
+
+    .punto:nth-child(2) {
+        animation-delay: -0.16s;
+    }
+
+@keyframes salto {
+    0%, 80%, 100% {
+        transform: scale(0);
+    }
+
+    40% {
+        transform: scale(1);
+    }
+}
