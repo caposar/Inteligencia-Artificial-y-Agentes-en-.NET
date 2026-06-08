@@ -8,7 +8,9 @@
             ["gpt-5.4"] = "openai",
             ["claude-haiku-4-5"] = "claude",
             ["claude-sonnet-4-5"] = "claude",
-            ["mistral-small-latest"] = "mistral"
+            ["mistral-small-latest"] = "mistral",
+            ["qwen3.5:2b"] ="ollama",
+            ["qwen3.5:9b"] ="ollama"
         };
 
         public static string ObtenerProveedor(string modelo)

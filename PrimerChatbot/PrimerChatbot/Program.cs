@@ -27,7 +27,7 @@ var proveedoresPorDefecto = new Dictionary<string, string>
     ["mistral"] = "mistral-small-latest",
     ["deepseek"] = "deepseek-v4-flash",
     ["github"] = "gpt-4o-mini",
-    //["ollama"] = "llama3.2", // o "qwen2.5", "phi3"
+    ["ollama"] = "qwen3.5:2b", // "qwen3.5:9b", // o "qwen2.5", "phi3"
 
     // Opciones a través de OPENROUTER (Soportan Tools)
     ["openrouter"] = "openrouter/free",                 // IMPORTANTE: El default si solo pones "openrouter"
@@ -42,7 +42,7 @@ var proveedoresPorDefecto = new Dictionary<string, string>
     //["openrouter"] = "moonshotai/kimi-k2.6:free"        // Multimodal y multi-agente
 };
 
-var proveedor = args.Length > 0 ? args[0].ToLowerInvariant() : "openrouter";
+var proveedor = args.Length > 0 ? args[0].ToLowerInvariant() : "ollama";
 var modeloPorDefecto = proveedoresPorDefecto.TryGetValue(proveedor, out var m) ? m : "openrouter/free";
 var modelo = args.Length > 1 ? args[1] : modeloPorDefecto;
 

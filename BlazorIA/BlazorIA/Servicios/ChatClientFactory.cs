@@ -1,6 +1,7 @@
 ﻿using Anthropic;
 using BlazorIA.Utilidades;
 using Microsoft.Extensions.AI;
+using OllamaSharp;
 
 namespace BlazorIA.Servicios
 {
@@ -16,6 +17,7 @@ namespace BlazorIA.Servicios
             var llaveDeepSeek = configuration.GetValue<string>("DEEPSEEK_LLAVE");
             var llaveOpenRouter = configuration.GetValue<string>("OPENROUTER_LLAVE");
             var llaveGitHub = configuration.GetValue<string>("GITHUB_LLAVE");
+            var urlOllama = configuration.GetValue<string>("OLLAMA_ENDPOINT")!;
 
             var proveedor = ModelosIA.ObtenerProveedor(modelo);
 
@@ -76,9 +78,7 @@ namespace BlazorIA.Servicios
                     .AsIChatClient(),
 
                 // Ollama: Ejecución local en tu PC (requiere tener ollama ejecutándose)
-                //"ollama" => new Microsoft.Extensions.AI.OllamaChatClient(
-                //    new Uri("http://localhost:11434"),
-                //    modelo ?? "llama3.2"),
+                "ollama" => new OllamaApiClient(urlOllama, modelo ?? "qwen3.5:2b"),
 
                 _ => throw new ArgumentException($"Proveedor desconocido: {proveedor}")
             };

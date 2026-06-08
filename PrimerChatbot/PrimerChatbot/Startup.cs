@@ -3,6 +3,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using OllamaSharp;
 using PrimerChatbot.Servicios;
 using System;
 using System.Collections.Generic;
@@ -97,9 +98,7 @@ namespace PrimerChatbot
                         .AsIChatClient(),
 
                     // Ollama: Ejecución local en tu PC (requiere tener ollama ejecutándose)
-                    //"ollama" => new Microsoft.Extensions.AI.OllamaChatClient(
-                    //    new Uri("http://localhost:11434"),
-                    //    modelo ?? "llama3.2"),
+                    "ollama" => new OllamaApiClient(new Uri("http://127.0.0.1:11434"), modelo ?? "qwen3.5:2b"),
 
                     _ => throw new ArgumentException($"Proveedor desconocido: {proveedor}. Opciones: openai, claude, groq, gemini, mistral, deepseek")
                 };
