@@ -1,5 +1,4 @@
-﻿@page "/"
-
+﻿@page "/chat-rag"
 @using BlazorIA.DTOs
 @using BlazorIA.Servicios.Chatbots
 @using BlazorIA.Utilidades
@@ -7,14 +6,50 @@
 @inject IJSRuntime JS
 
 <div class="chat-wrapper">
-    <h3 class="chat-titulo">Chat con IA</h3>
+    <h3 class="chat-titulo">Chat sobre documentos internos</h3>
 
     <div class="chat-mensajes" @ref="contenedorMensajes">
         @foreach (var mensaje in ChatSession.Conversacion)
         {
             <div class="mensaje @ObtenerClaseCSS(mensaje.Rol)">
                 <div class="mensaje-header">@ObtenerEtiqueta(mensaje.Rol)</div>
-                <div class="mensaje-body">@mensaje.Texto</div>
+                <div class="mensaje-body">
+                    @if (string.IsNullOrEmpty(mensaje.Texto))
+                    {
+                        <div class="typing-indicator">
+                            <div class="typing-dots" aria-label="La IA está escribiendo" role="status">
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                            </div>
+                        </div>
+
+                    }
+                    else
+                    {
+                        @mensaje.Texto
+                        
+                    }
+                </div>
+
+                @if (mensaje.ArchivosCitados.Any())
+                {
+                    <div class="mensaje-citas">
+                        <div class="citas-titulo">Fuentes</div>
+
+                        <div class="citas-lista">
+                            @foreach (var archivo in mensaje.ArchivosCitados.DistinctBy(x => x.NombreArchivo))
+                            {
+                                <a class="cita-card"
+                                       href="@($"/documentos/{Uri.EscapeDataString(archivo.NombreArchivo)}")">
+                                    <div class="cita-card-titulo">@archivo.NombreArchivo</div>
+                                    <div class="cita-card-subtitulo">Ver documento</div>
+                                </a>
+                            }
+                        </div>
+                    </div>
+                }
+
             </div>
         }
 
@@ -89,7 +124,7 @@
 
 
 @code {
-    [Inject(Key = "chat")]
+    [Inject(Key = "chat-rag")]
     public IChatbot ChatSession { get; set; } = null!;
 
     private readonly ChatInputModel modelo = new();
@@ -188,6 +223,4 @@
     {
         public string Texto { get; set; } = string.Empty;
     }
-
-
 }

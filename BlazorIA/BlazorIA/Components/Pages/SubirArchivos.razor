@@ -1,0 +1,197 @@
+﻿@page "/subir-archivos"
+@using BlazorIA.RAG.Servicios
+@implements IDisposable
+@inject IVectorStore VectorStoreCliente
+
+<h3>Subir archivos markdown</h3>
+
+<div class="mb-3">
+    <InputFile OnChange="SeleccionarArchivos"
+               multiple
+               accept=".md,text/markdown" />
+</div>
+
+<p class="text-muted">
+    Solo se permiten archivos .md.
+    Tamaño máximo por archivo: @FormatearBytes(TamanoMaximoArchivoBytes).
+</p>
+
+@if (archivosPendientes.Count > 0)
+{
+    <div class="mb-3">
+        <button class="btn btn-primary"
+                @onclick="OnSubirArchivo"
+                disabled="@estaSubiendo">
+            @(estaSubiendo ? "Subiendo..." : "Subir archivos")
+        </button>
+
+        <button class="btn btn-secondary ms-2"
+                @onclick="CancelarSubida"
+                disabled="@(!estaSubiendo)">
+            Cancelar
+        </button>
+
+        <button class="btn btn-outline-danger ms-2"
+                @onclick="LimpiarLista"
+                disabled="@estaSubiendo">
+            Limpiar lista
+        </button>
+    </div>
+}
+
+@if (!string.IsNullOrWhiteSpace(mensajeExito))
+{
+    <div class="alert alert-success">
+        @mensajeExito
+    </div>
+}
+
+@if (!string.IsNullOrWhiteSpace(mensajeError))
+{
+    <div class="alert alert-danger">
+        @mensajeError
+    </div>
+}
+
+@if (archivosPendientes.Count > 0)
+{
+    <div class="card">
+        <div class="card-body">
+            <h5 class="card-title">Archivos listos para subir</h5>
+
+            <ul class="list-group">
+                @foreach (var archivo in archivosPendientes)
+                {
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>@archivo.Name</strong>
+                            <div class="text-muted small">
+                                @FormatearBytes(archivo.Size)
+                            </div>
+                        </div>
+
+                        <button class="btn btn-sm btn-outline-danger"
+                                @onclick="() => RemoverArchivo(archivo)"
+                                disabled="@estaSubiendo">
+                            Quitar
+                        </button>
+                    </li>
+                }
+            </ul>
+        </div>
+    </div>
+}
+
+@code {
+    private const long TamanoMaximoArchivoBytes = 10 * 1024 * 1024;
+
+    private readonly List<IBrowserFile> archivosPendientes = [];
+    private bool estaSubiendo;
+    private string? mensajeExito;
+    private string? mensajeError;
+    private CancellationTokenSource? cancellationTokenSource;
+
+    private void SeleccionarArchivos(InputFileChangeEventArgs e)
+    {
+        mensajeExito = null;
+        mensajeError = null;
+
+        archivosPendientes.Clear();
+
+        var archivos = e.GetMultipleFiles();
+
+        foreach (var archivo in archivos)
+        {
+            if (!EsMarkdownValido(archivo))
+            {
+                continue;
+            }
+
+            if (archivo.Size > TamanoMaximoArchivoBytes)
+            {
+                continue;
+            }
+
+            archivosPendientes.Add(archivo);
+        }
+
+        if (archivos.Count != archivosPendientes.Count)
+        {
+            mensajeError = "Algunos archivos fueron ignorados porque no eran .md o excedían el tamaño permitido.";
+        }
+    }
+
+    private async Task OnSubirArchivo()
+    {
+        if (estaSubiendo || archivosPendientes.Count == 0)
+        {
+            return;
+        }
+
+        estaSubiendo = true;
+        mensajeExito = null;
+        mensajeError = null;
+
+        cancellationTokenSource?.Dispose();
+        cancellationTokenSource = new CancellationTokenSource();
+
+        try
+        {
+            await VectorStoreCliente.SubirArchivos(archivosPendientes.ToList(), cancellationTokenSource.Token);
+
+            mensajeExito = $"Se subieron {archivosPendientes.Count} archivo(s) correctamente.";
+            archivosPendientes.Clear();
+        }
+        catch (OperationCanceledException)
+        {
+            mensajeError = "La operación fue cancelada.";
+        }
+        catch (Exception ex)
+        {
+            mensajeError = $"Ocurrió un error al subir los archivos: {ex.Message}";
+        }
+        finally
+        {
+            estaSubiendo = false;
+        }
+    }
+
+    private void CancelarSubida()
+    {
+        cancellationTokenSource?.Cancel();
+    }
+
+    private void RemoverArchivo(IBrowserFile archivo)
+    {
+        archivosPendientes.Remove(archivo);
+    }
+
+    private void LimpiarLista()
+    {
+        archivosPendientes.Clear();
+        mensajeExito = null;
+        mensajeError = null;
+    }
+
+    private static bool EsMarkdownValido(IBrowserFile archivo)
+    {
+        return archivo.Name.EndsWith(".md", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string FormatearBytes(long bytes)
+    {
+        if (bytes < 1024)
+            return $"{bytes} B";
+
+        if (bytes < 1024 * 1024)
+            return $"{bytes / 1024.0:F2} KB";
+
+        return $"{bytes / 1024.0 / 1024.0:F2} MB";
+    }
+
+    public void Dispose()
+    {
+        cancellationTokenSource?.Cancel();
+        cancellationTokenSource?.Dispose();
+    }
+}

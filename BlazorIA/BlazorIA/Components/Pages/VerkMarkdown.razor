@@ -1,0 +1,70 @@
+﻿@page "/documentos/{NombreArchivo}"
+@using BlazorIA.RAG.Servicios
+@using Markdig
+@inject IRepositorioMarkdown RepositorioMarkdown
+
+<PageTitle>@TituloPagina</PageTitle>
+
+@if (cargando)
+{
+    <p>Cargando documento...</p>
+}
+else if (!string.IsNullOrWhiteSpace(error))
+{
+    <div class="alert alert-danger" role="alert">
+        @error
+    </div>
+}
+else
+{
+    <div class="markdown-container">
+        @((MarkupString)htmlRenderizado)
+    </div>
+}
+
+@code {
+    [Parameter]
+    public string NombreArchivo { get; set; } = default!;
+
+    private bool cargando = true;
+    private string? error;
+    private string htmlRenderizado = string.Empty;
+    private string TituloPagina => string.IsNullOrWhiteSpace(NombreArchivo)
+        ? "Documento"
+        : NombreArchivo;
+
+    private static readonly MarkdownPipeline pipeline = new MarkdownPipelineBuilder()
+        .UseAdvancedExtensions()
+        .Build();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        cargando = true;
+        error = null;
+        htmlRenderizado = string.Empty;
+
+        try
+        {
+            var nombreArchivoDecodificado = Uri.UnescapeDataString(NombreArchivo);
+
+            var markdown = await RepositorioMarkdown
+                .ObtenerContenidoPorNombreArchivo(nombreArchivoDecodificado);
+
+            if (string.IsNullOrWhiteSpace(markdown))
+            {
+                error = $"No se encontró el archivo '{nombreArchivoDecodificado}'.";
+                return;
+            }
+
+            htmlRenderizado = Markdown.ToHtml(markdown, pipeline);
+        }
+        catch (Exception ex)
+        {
+            error = $"Ocurrió un error al cargar el documento: {ex.Message}";
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+}

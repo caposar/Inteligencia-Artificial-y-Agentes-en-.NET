@@ -9,6 +9,7 @@
             ["claude-haiku-4-5"] = "claude",
             ["claude-sonnet-4-5"] = "claude",
             ["mistral-small-latest"] = "mistral",
+            ["gpt-4o-mini"] = "github",
             ["qwen3.5:2b"] ="ollama",
             ["qwen3.5:9b"] ="ollama"
         };
