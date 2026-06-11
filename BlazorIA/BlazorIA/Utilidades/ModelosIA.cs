@@ -25,6 +25,6 @@
         }
 
         public static IEnumerable<string> ObtenerModelosDisponibles() => Modelos.Keys;
-        public static string ObtenerModeloPorDefecto => "mistral-small-latest";
+        public static string ObtenerModeloPorDefecto => "gpt-4o-mini";
     }
 }

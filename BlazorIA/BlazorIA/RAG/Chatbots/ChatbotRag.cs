@@ -127,7 +127,7 @@ namespace BlazorIA.RAG.Chatbots
 
         private async Task ProcesarRespuesta(string textoUsuario, CancellationToken cancellationToken)
         {
-            var contexto = await servicioRag.BuscarContextoRelevante(textoUsuario, top: 3, scoreMinimo: 0.6f, cancellationToken);
+            var contexto = await servicioRag.BuscarContextoRelevante(textoUsuario, top: 3, scoreMinimo: 0.35f, cancellationToken);
 
             if (!contexto.Any())
             {

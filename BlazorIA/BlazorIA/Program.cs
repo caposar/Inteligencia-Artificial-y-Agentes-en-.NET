@@ -8,7 +8,9 @@ using BlazorIA.Servicios.Chatbots;
 using BlazorIA.Utilidades;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
-using Microsoft.SemanticKernel.Connectors.InMemory;
+//using Microsoft.SemanticKernel.Connectors.InMemory;
+using Microsoft.SemanticKernel.Connectors.PgVector;
+using Npgsql;
 using OpenAI.Embeddings;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -28,20 +30,56 @@ builder.Services.AddKeyedScoped<IChatbot, ChatbotRag>("chat-rag");
 builder.Services.AddSingleton<ServicioDocumentosEnMemoria>();
 builder.Services.AddSingleton<IServicioRag, ServicioRAGAzureSearch>();
 //builder.Services.AddSingleton<IServicioRag, ServicioRagMemoria>();
-builder.Services.AddSingleton<InMemoryVectorStore>();
+//builder.Services.AddSingleton<InMemoryVectorStore>();
 
 builder.Services.AddSingleton<ServicioIndiceRagAzureSearch>();
 builder.Services.AddScoped<IVectorStore, VectorStoreClienteAzureSearch>();
 
 builder.Services.AddTransient<IRepositorioMarkdown, RepositorioMarkdownLocal>();
 
+// --- SUPABASE / PGVECTOR ---
+
+// 1. Conexión a Postgres con UseVector() obligatorio
+builder.Services.AddSingleton<NpgsqlDataSource>(sp =>
+{
+    var connectionString = builder.Configuration["SupabaseConnection"]!;
+    var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
+    dataSourceBuilder.UseVector(); // ✅ CRÍTICO: sin esto falla en runtime
+    return dataSourceBuilder.Build();
+});
+
+// 2. Motor vectorial - la clase es PostgresVectorStore, NO PgVectorStore
+builder.Services.AddPostgresVectorStore(); // ✅ Extension method oficial
+
+// 3. Tus servicios RAG
+builder.Services.AddScoped<BlazorIA.RAG.Servicios.IVectorStore, VectorStoreClienteSupabase>();
+builder.Services.AddSingleton<IServicioRag, ServicioRagSupabase>();
+
+// --- EMBEDDINGS ---
+//builder.Services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(sp =>
+//{
+//    var configuration = sp.GetRequiredService<IConfiguration>();
+//    var apiKey = configuration["OPENAI_LLAVE"]!;
+//    var modeloEmbeddings = configuration["MODELO_GENERA_EMBEDDINGS"];
+
+//    var cliente = new EmbeddingClient(modeloEmbeddings, apiKey);
+//    return cliente.AsIEmbeddingGenerator();
+//});
+
 builder.Services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(sp =>
 {
     var configuration = sp.GetRequiredService<IConfiguration>();
-    var apiKey = configuration["OPENAI_LLAVE"]!;
+    var apiKey = configuration["GITHUB_LLAVE"]!;
     var modeloEmbeddings = configuration["MODELO_GENERA_EMBEDDINGS"];
 
-    var cliente = new EmbeddingClient(modeloEmbeddings, apiKey);
+    var cliente = new EmbeddingClient(
+        modeloEmbeddings,
+        new System.ClientModel.ApiKeyCredential(apiKey),
+        new OpenAI.OpenAIClientOptions
+        {
+            Endpoint = new Uri("https://models.inference.ai.azure.com")
+        }
+    );
     return cliente.AsIEmbeddingGenerator();
 });
 
