@@ -227,10 +227,24 @@ namespace BlazorIA.RAG.Chatbots
                                     .Replace("\n", "")
                                     .Replace("\r", "");
 
-            var metadata = JsonSerializer.Deserialize<MetadataFuentes>(contenidoFuentes)!;
+            List<string> fuentesUsadas = [];
 
+            if (!string.IsNullOrWhiteSpace(contenidoFuentes))
+            {
+                try
+                {
+                    var metadata = JsonSerializer.Deserialize<MetadataFuentes>(contenidoFuentes);
+                    fuentesUsadas = metadata?.FuentesUsadas ?? [];
+                }
+                catch (JsonException)
+                {
+                    // El modelo no devolvió el bloque de fuentes en el formato esperado.
+                    // No es un error fatal: simplemente no mostramos "Fuentes" para esta respuesta.
+                    fuentesUsadas = [];
+                }
+            }
 
-            Conversacion[^1].ArchivosCitados = metadata.FuentesUsadas.Select(nombreArchivo =>
+            Conversacion[^1].ArchivosCitados = fuentesUsadas.Select(nombreArchivo =>
             new ArchivoCitado
             {
                 NombreArchivo = nombreArchivo
