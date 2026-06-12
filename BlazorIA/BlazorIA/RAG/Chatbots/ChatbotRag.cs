@@ -124,11 +124,19 @@ namespace BlazorIA.RAG.Chatbots
             NotificarCambio();
         }
 
-
+        /// <summary>
+        /// Orquesta el flujo de RAG para una pregunta del usuario:
+        /// 1) busca contexto relevante en Supabase, 2) si no hay contexto suficiente, corta acá,
+        /// 3) si hay contexto, arma un mensaje de sistema con ese contexto + la pregunta,
+        /// 4) llama al LLM en streaming, separando la respuesta visible de las "fuentesUsadas" (JSON).
+        /// </summary>
         private async Task ProcesarRespuesta(string textoUsuario, CancellationToken cancellationToken)
         {
+            // 1. Recuperación: busca hasta 3 fragmentos con similitud >= 0.35.
             var contexto = await servicioRag.BuscarContextoRelevante(textoUsuario, top: 3, scoreMinimo: 0.35f, cancellationToken);
 
+            // 2. Si no se encontró nada relevante, no llamamos al LLM:
+            //    evita que "alucine" una respuesta sin contexto real.
             if (!contexto.Any())
             {
                 Conversacion[^1].Texto = "No tengo información suficiente en los documentos para responder esa pregunta.";
@@ -136,19 +144,21 @@ namespace BlazorIA.RAG.Chatbots
                 return;
             }
 
+            // Delimitador que separa, en la respuesta del modelo, el texto visible al usuario
+            // del bloque JSON con las fuentes citadas.
             var delimitadorFuentes = "|";
 
-            /*
-             Contexto recuperado de la base documental:
-
-            Documento: documento 1
-            Contenido: el contenido
-
-            -------
-
-            Documento: documento 2
-            Contenido: el contenido del doc 2
-             */
+            // 3. Mensaje de sistema "efímero": se arma en cada pregunta con el contexto encontrado
+            //    y se inserta justo antes del último mensaje de usuario. No se persiste en
+            //    "mensajes" (el historial), para no inflar el contexto en turnos futuros.
+            //
+            //    Ejemplo:
+            //    Contexto recuperado de la base documental:
+            //    Documento: documento 1
+            //    Contenido: el contenido
+            //    -------
+            //    Documento: documento 2
+            //    Contenido: el contenido del doc 2
             var mensajeContexto = new ChatMessage(ChatRole.System,
                 $$"""
                 Contexto recuperado de la base documental:
@@ -174,6 +184,7 @@ namespace BlazorIA.RAG.Chatbots
 
             var mensajesParaEnviar = new List<ChatMessage>();
             mensajesParaEnviar.AddRange(mensajes);
+            // Insertamos el contexto justo antes del último mensaje (la pregunta actual del usuario).
             mensajesParaEnviar.Insert(mensajes.Count - 1, mensajeContexto);
 
             var updates = new List<ChatResponseUpdate>();
@@ -182,6 +193,10 @@ namespace BlazorIA.RAG.Chatbots
             var sbFuentes = new StringBuilder();
             var delimitadorEncontrado = false;
 
+            // 4. Streaming de la respuesta. Mientras no aparezca el delimitador "|",
+            //    el texto se va mostrando al usuario en tiempo real.
+            //    Una vez que aparece, todo lo que sigue (el JSON de fuentes) se acumula
+            //    aparte y NO se muestra como texto del chat.
             await foreach (var update in cliente.GetStreamingResponseAsync(mensajesParaEnviar, chatOptions,
                                             cancellationToken: cancellationToken))
             {
@@ -206,6 +221,7 @@ namespace BlazorIA.RAG.Chatbots
                 }
             }
 
+            // 5. Parseamos el JSON de fuentes y lo convertimos en chips/tarjetas para la UI.
             var contenidoFuentes = sbFuentes.ToString().Trim().Replace(delimitadorFuentes, "")
                                     .Replace("\r\n", "")
                                     .Replace("\n", "")
@@ -220,6 +236,8 @@ namespace BlazorIA.RAG.Chatbots
                 NombreArchivo = nombreArchivo
             }).ToList();
 
+            // 6. Persistimos la respuesta completa en el historial real (sin el bloque de contexto,
+            //    que era efímero) para mantener la conversación coherente en turnos siguientes.
             var respuesta = updates.ToChatResponse();
             mensajes.AddMessages(respuesta);
 

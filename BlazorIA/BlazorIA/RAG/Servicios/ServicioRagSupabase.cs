@@ -5,21 +5,32 @@ using Microsoft.SemanticKernel.Connectors.PgVector;
 
 namespace BlazorIA.RAG.Servicios
 {
+    /// <summary>
+    /// Implementación de IServicioRag que busca contexto en Supabase/PostgreSQL
+    /// usando la extensión pgvector. Es el "motor de búsqueda" del chat con RAG.
+    /// </summary>
     public class ServicioRagSupabase(
         IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
         PostgresVectorStore vectorStore) : IServicioRag
     {
+        // Nombre de la tabla/colección en Supabase. Debe coincidir con el usado
+        // en VectorStoreClienteSupabase al subir los archivos.
+        private const string NombreColeccion = "documentos_rag";
+
         public async Task<List<ResultadoBusquedaRAG>> BuscarContextoRelevante(
             string pregunta,
             int top = 3,
             float scoreMinimo = 0.6f,
             CancellationToken cancellationToken = default)
         {
-            var collection = vectorStore.GetCollection<string, DocumentoRagSupabase>("documentos_rag");
+            var collection = vectorStore.GetCollection<string, DocumentoRagSupabase>(NombreColeccion);
 
+            // 1. Convertimos la pregunta del usuario en un vector de 1536 dimensiones,
+            //    usando el mismo modelo de embeddings que se usó al subir los documentos.
             var embeddingPregunta = await embeddingGenerator.GenerateVectorAsync(pregunta, cancellationToken: cancellationToken);
 
-            // ✅ CAMBIO 1 y 2: Sin 'await' inicial y 'top' pasa como parámetro directo
+            // 2. Búsqueda por similitud coseno en Postgres. "top" trae los N fragmentos
+            //    más cercanos, sin importar qué tan relevantes sean realmente.
             var searchResult = collection.SearchAsync(
                 embeddingPregunta,
                 top: top,
@@ -27,13 +38,11 @@ namespace BlazorIA.RAG.Servicios
 
             var resultados = new List<ResultadoBusquedaRAG>();
 
-            Console.WriteLine($"[RAG DEBUG] Pregunta: {pregunta}");
-
-            // ✅ CAMBIO 3: Iteramos directamente sobre 'searchResult' sin usar '.Results'
+            // 3. Filtramos por score mínimo: descartamos fragmentos que, aunque sean
+            //    "los más cercanos de los top", no son lo suficientemente relevantes
+            //    como para responder con confianza (evita alucinaciones).
             await foreach (var item in searchResult)
             {
-                Console.WriteLine($"[RAG DEBUG] Score: {item.Score} | Doc: {item.Record.TituloDocumento}");
-
                 if (item.Score >= scoreMinimo)
                 {
                     resultados.Add(new ResultadoBusquedaRAG(item.Record.TituloDocumento, item.Record.Texto));
@@ -43,6 +52,10 @@ namespace BlazorIA.RAG.Servicios
             return resultados;
         }
 
+        /// <summary>
+        /// No se requiere inicialización: la tabla "documentos_rag" se crea
+        /// automáticamente (EnsureCollectionExistsAsync) al subir el primer archivo.
+        /// </summary>
         public Task Inicializar(CancellationToken cancellationToken = default)
         {
             return Task.CompletedTask;
