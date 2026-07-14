@@ -1,0 +1,66 @@
+﻿@page "/"
+@using VisualizarPersonasMCP.Entidades
+@using VisualizarPersonasMCP.Servicios
+@inject IServicioPersonas servicioPersonas
+@implements IDisposable
+
+<PageTitle>Home</PageTitle>
+
+<h1>Listado de personas</h1>
+
+@if (Personas is not null)
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Nombre</th>
+                <th>Salario</th>
+                <th>Activo</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var persona in Personas)
+            {
+                <tr @key="persona.Id">
+                    <td>@persona.Nombre</td>
+                    <td>@persona.Salario.ToString("#,#")</td>
+                    <td>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" value="" id="flexCheckCheckedDisabled" @bind="persona.Activo" disabled>
+                        </div>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+else
+{
+    <p>cargando...</p>
+}
+@code {
+    Timer timer = null!;
+    private IEnumerable<Persona> Personas = null!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarPersonas();
+        timer = new Timer(new TimerCallback(Elapsed), null, 0, 1000);
+    }
+
+    async Task CargarPersonas()
+    {
+        Personas = await servicioPersonas.ObtenerTodas();
+    }
+
+    private void Elapsed(object? state)
+    {
+        CargarPersonas();
+        InvokeAsync(StateHasChanged);
+    }
+    
+    public void Dispose()
+    {
+        timer?.Dispose();
+    }
+}
