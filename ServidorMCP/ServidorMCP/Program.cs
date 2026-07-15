@@ -27,22 +27,35 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddSingleton<IRepositorioPersonas, RepositorioPersonasMemoria>();
 
-// ── AGREGADO: Health check para monitoreo (cron-job.org, Sección 8) ────
+// Expone /api/health para que herramientas de monitoreo (cron-job.org,
+// Docker, Kubernetes, etc.) puedan verificar automáticamente si la
+// aplicación sigue viva.
 builder.Services.AddHealthChecks();
 
-// ── AGREGADO: Forwarded Headers — recomendado detrás de Nginx ──────────
+// La aplicación corre detrás de un reverse proxy (Nginx). Sin este ajuste,
+// ASP.NET Core ve todas las conexiones como si vinieran del proxy mismo
+// (127.0.0.1) y no del cliente real, y no sabe distinguir si la petición
+// original llegó por HTTP o HTTPS. Esto afecta la IP que se registra en
+// logs, la lógica de autenticación y cualquier redirección basada en el
+// esquema de la conexión.
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-    // Necesario en Docker: la red vps-network no está en la lista de
-    // redes conocidas por defecto (igual que en Lusso Store).
+
+    // Docker asigna una IP dinámica a Nginx dentro de la red vps-network,
+    // así que no puede fijarse de antemano en KnownProxies/KnownNetworks.
+    // Al limpiar ambas listas, se confía en cualquier IP dentro de la red
+    // interna del contenedor — algo seguro acá porque esa red no es
+    // accesible desde internet, solo desde el propio servidor.
     options.KnownNetworks.Clear();
     options.KnownProxies.Clear();
 });
 
 var app = builder.Build();
 
-// ── AGREGADO: debe ir ANTES de UseCors/MapControllers ──────────────────
+// Debe ir antes de UseCors/MapControllers: necesita corregir la información
+// de la petición (IP real, esquema HTTP/HTTPS) antes de que el resto del
+// pipeline la use.
 app.UseForwardedHeaders();
 
 app.UseCors();
@@ -51,7 +64,6 @@ app.MapMcp("/mcp");
 
 app.MapControllers();
 
-// ── AGREGADO: endpoint que va a monitorear cron-job.org ────────────────
 app.MapHealthChecks("/api/health");
 
 app.Run();
