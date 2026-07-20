@@ -7,7 +7,8 @@ namespace VisualizarPersonasMCP.Servicios
     {
         public async Task<IEnumerable<Persona>> ObtenerTodas()
         {
-            var baseURL = "https://servidormcp20260423155102-erhmbda7csfehagw.eastus-01.azurewebsites.net";
+            //var baseURL = "https://servidormcp20260423155102-erhmbda7csfehagw.eastus-01.azurewebsites.net";
+            var baseURL = "https://servidormcp-api.duckdns.org";
             var url = $"{baseURL}/api/personas";
             var resultado = await httpClient.GetFromJsonAsync<IEnumerable<Persona>>(url);
             return resultado!;
