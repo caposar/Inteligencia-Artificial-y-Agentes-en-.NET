@@ -1,0 +1,452 @@
+﻿﻿@{
+ViewData["Title"] = "Chat con IA";
+ViewData["BodyClass"] = "chat-page";
+}
+
+<div class="chat-layout">
+    <aside class="chat-sidebar">
+        <button id="btnNuevoChat" class="btn btn-primary w-100 mb-3">
+            Nuevo chat
+        </button>
+
+        <div id="listaConversaciones" class="conversaciones"></div>
+    </aside>
+
+    <main class="chat-wrapper">
+        <h3 class="chat-titulo">Chat con IA</h3>
+
+        <div id="chatMensajes" class="chat-mensajes"></div>
+
+        <form id="formChat">
+            <input type="hidden" id="conversacionActualId" />
+
+            <div class="entrada-chat">
+                <input id="textoMensaje"
+                       class="form-control"
+                       placeholder="Escribe tu mensaje..."
+                       autocomplete="off" />
+
+                <button id="btnEnviar" type="submit" class="btn btn-primary">
+                    Enviar
+                </button>
+
+                <button id="btnCancelar"
+                        type="button"
+                        class="btn btn-outline-secondary"
+                        disabled>
+                    Cancelar
+                </button>
+            </div>
+
+        </form>
+    </main>
+
+</div>
+
+@section Scripts {
+    <script>
+        const formChat = document.getElementById("formChat");
+        const textoMensaje = document.getElementById("textoMensaje");
+        const chatMensajes = document.getElementById("chatMensajes");
+        const conversacionActualId = document.getElementById("conversacionActualId");
+        const listaConversaciones = document.getElementById("listaConversaciones");
+        let abortControllerActual = null;
+        let aprobacionPendienteActiva = false;
+
+        document.addEventListener("DOMContentLoaded", async () => {
+            await cargarConversaciones();
+
+            const primeraConversacion = document.querySelector("[data-conversacion-id]");
+
+            if (primeraConversacion) {
+                const id = primeraConversacion.dataset.conversacionId;
+                conversacionActualId.value = id;
+                cargarConversacion(id);
+                marcarConversacionActiva(id);
+            } else {
+                await crearNuevoChat();
+            }
+        })
+
+        async function cargarConversaciones() {
+
+            const response = await fetch("/api/Chat/ObtenerConversaciones");
+
+            const conversaciones = await response.json();
+            listaConversaciones.innerHTML = "";
+
+            for (const conversacion of conversaciones) {
+                const fila = document.createElement("div");
+                fila.className = "conversacion-fila";
+
+                const button = document.createElement("button");
+                button.type = "button";
+                button.className = "conversacion-item";
+                button.dataset.conversacionId = conversacion.id;
+                button.textContent = conversacion.titulo;
+
+                if (conversacion.id === conversacionActualId.value) {
+                    button.classList.add("activa");
+                }
+
+
+                const botonBorrar = document.createElement("button");
+                botonBorrar.type = "button";
+                botonBorrar.className = "conversacion-borrar";
+                botonBorrar.dataset.borrarConversacionId = conversacion.id;
+                botonBorrar.textContent = "x";
+
+                fila.appendChild(button);
+                fila.appendChild(botonBorrar);
+                listaConversaciones.appendChild(fila);
+
+            }
+
+            return conversaciones;
+        }
+
+        async function crearNuevoChat() {
+
+            const response = await fetch("/api/Chat/NuevoChat", {
+                method: "POST"
+            });
+
+            if (!response.ok) {
+                console.error("No se pudo crear el nuevo chat.");
+                return;
+            }
+
+            const data = await response.json();
+            conversacionActualId.value = data.id;
+            await cargarConversaciones();
+            await cargarConversacion(data.id);
+            marcarConversacionActiva(data.id);
+
+        }
+
+        async function borrarConversacion(id) {
+
+            if (!confirm("¿Confirmas desear eliminar esta conversación?")) {
+                return;
+            }
+
+            // const response = await fetch("/api/Chat/BorrarConversacion", {
+            //     method: "POST",
+            //     headers: {
+            //         "Content-Type": "application/json"
+            //     },
+            //     body: JSON.stringify(id)
+            // });
+
+            // Con DELETE ya no hace falta enviar headers de Content-Type ni el body
+            const response = await fetch(`/api/Chat/BorrarConversacion/${id}`, {
+                method: "DELETE"
+            });
+
+            const conversaciones = await cargarConversaciones();
+            const eraConversacionActiva = id === conversacionActualId.value;
+
+            if (!eraConversacionActiva) {
+                marcarConversacionActiva(conversacionActualId.value);
+                return;
+            }
+
+            if (conversaciones.length > 0) {
+                const primeraConversacion = conversaciones[0];
+                conversacionActualId.value = primeraConversacion.id;
+                await cargarConversacion(primeraConversacion.id);
+                marcarConversacionActiva(primeraConversacion.id);
+                return;
+            }
+
+            chatMensajes.innerHTML = "";
+            conversacionActualId.value = "";
+            await crearNuevoChat();
+        }
+
+        listaConversaciones.addEventListener("click", async e => {
+
+            const botonBorrar = e.target.closest("[data-borrar-conversacion-id]");
+
+            if (botonBorrar) {
+                await borrarConversacion(botonBorrar.dataset.borrarConversacionId);
+                return;
+            }
+
+            const boton = e.target.closest("[data-conversacion-id]");
+
+            if (!boton) {
+                return;
+            }
+
+            const id = boton.dataset.conversacionId;
+            conversacionActualId.value = id;
+
+            await cargarConversacion(id);
+            marcarConversacionActiva(id);
+        });
+
+        btnNuevoChat.addEventListener("click", async () => {
+            await crearNuevoChat();
+        });
+
+        async function cargarConversacion(id) {
+
+            const response = await fetch(`/api/Chat/ObtenerConversacion?id=${id}`);
+            const data = await response.json();
+            chatMensajes.innerHTML = "";
+            aprobacionPendienteActiva = false;
+
+            for (const mensaje of data.mensajes) {
+                agregarMensaje(mensaje.rol, mensaje.texto);
+            }
+
+            if (data.aprobacionPendiente) {
+                agregarAprobacion(data.aprobacionPendiente);
+            }
+
+            configurarControlesProcesando(false);
+            scrollAbajo();
+
+        }
+
+        function marcarConversacionActiva(id) {
+            document.querySelectorAll(".conversacion-item").forEach(item => {
+                item.classList.toggle("activa", item.dataset.conversacionId === id);
+            });
+        }
+
+
+
+        formChat.addEventListener("submit", async e => {
+
+            e.preventDefault();
+            const texto = textoMensaje.value.trim();
+
+            if (!texto) {
+                return;
+            }
+
+            textoMensaje.value = "";
+            agregarMensaje("Usuario", texto);
+            const mensajeIa = agregarMensaje("IA", "");
+            const cuerpoMensajeIa = mensajeIa.querySelector(".mensaje-body");
+
+            const abortController = new AbortController();
+            abortControllerActual = abortController;
+
+            configurarControlesProcesando(true);
+
+            try {
+                const response = await fetch("/api/Chat/Enviar", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        conversacionId: conversacionActualId.value,
+                        texto
+                    }),
+                    signal: abortController.signal
+                });
+
+                if (!response.ok || !response.body) {
+                    cuerpoMensajeIa.textContent = "No se pudo obtener la respuesta de la IA.";
+                    return;
+                }
+
+                await leerRespuestaStream(response, texto => {
+                    cuerpoMensajeIa.textContent += texto;
+                    scrollAbajo();
+                });
+
+                await cargarConversaciones();
+                marcarConversacionActiva(conversacionActualId.value);
+            }
+            catch (error) {
+                if (error.name === "AbortError") {
+                    marcarRespuestaCancelada(cuerpoMensajeIa);
+                    return;
+                }
+
+                throw error;
+            } finally {
+                configurarControlesProcesando(false);
+            }
+
+        });
+
+        function marcarRespuestaCancelada(cuerpoMensajeIa) {
+            const textoActual = cuerpoMensajeIa.textContent.trim();
+
+            cuerpoMensajeIa.textContent = textoActual
+                ? `${textoActual} [cancelado]`
+                : "[Respuesta cancelada]";
+
+            scrollAbajo();
+        }
+
+        btnCancelar.addEventListener("click", () => {
+            abortControllerActual?.abort();
+        });
+
+        function agregarAprobacion(aprobacion) {
+
+            aprobacionPendienteActiva = true;
+            const div = document.createElement("div");
+            div.className = "aprobacion-tool";
+
+            const argumentos = Object.entries(aprobacion.argumentos ?? {})
+                .map(([key, value]) => `<li><strong>${key}:</strong> ${value}</li>`)
+                .join("");
+
+            div.innerHTML = `
+                        <h4>La IA desea ejecutar una acción sensible</h4>
+                        <p><strong>Tool:</strong> ${aprobacion.nombreTool}</p>
+
+                        ${argumentos ? `<ul>${argumentos}</ul>` : ""}
+
+                        <div class="acciones-aprobacion">
+                            <button class="btn btn-success" data-aprobado="true">
+                                Aprobar
+                            </button>
+
+                            <button class="btn btn-danger" data-aprobado="false">
+                                Rechazar
+                            </button>
+                        </div>
+                    `;
+
+            div.querySelectorAll("[data-aprobado]").forEach(button => {
+                button.addEventListener("click", async () => {
+                    await resolverAprobacion(button.dataset.aprobado === "true");
+                });
+            });
+
+            chatMensajes.appendChild(div);
+            configurarControlesProcesando(false);
+            scrollAbajo();
+        }
+
+        async function resolverAprobacion(aprobado) {
+
+            await fetch("/api/Chat/ResolverAprobacion", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    conversacionId: conversacionActualId.value,
+                    aprobado
+                })
+            });
+
+            await cargarConversacion(conversacionActualId.value);
+        }
+
+        async function leerRespuestaStream(response, onDelta) {
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = "";
+
+            while (true) {
+                const { value, done } = await reader.read();
+
+                if (done) {
+                    break;
+                }
+
+                buffer += decoder.decode(value, { stream: true });
+                const lineas = buffer.split("\n");
+                buffer = lineas.pop() ?? "";
+
+                for (const linea of lineas) {
+                    procesarEventoStream(linea, onDelta);
+                }
+
+            }
+
+            buffer += decoder.decode();
+
+            if (buffer.trim()) {
+                procesarEventoStream(buffer, onDelta);
+            }
+        }
+
+        function procesarEventoStream(linea, onDelta) {
+            if (!linea.trim()) {
+                return;
+            }
+
+            const evento = JSON.parse(linea);
+
+            if (evento.tipo === "iniciar_conversacion") {
+                conversacionActualId.value = evento.datos.id;
+                return;
+            }
+
+            if (evento.tipo === "delta") {
+                onDelta(evento.datos.texto ?? "");
+                return;
+            }
+
+            if (evento.tipo === "error") {
+                agregarMensaje("Sistema", evento.datos.mensaje ?? "Ocurrió un error al procesar la respuesta.");
+                return;
+            }
+
+            if (evento.tipo === "aprobacion_requerida") {
+                agregarAprobacion({
+                    nombreTool: evento.datos.nombreTool,
+                    argumentos: evento.datos.argumentos
+                });
+
+                return;
+            }
+        }
+
+        function agregarMensaje(rol, texto) {
+
+            const div = document.createElement("div");
+
+            div.className = `mensaje ${obtenerClaseCss(rol)}`;
+
+            div.innerHTML = `
+                        <div class="mensaje-header">${obtenerEtiqueta(rol)}</div>
+                        <div class="mensaje-body"></div>
+                    `;
+
+            div.querySelector(".mensaje-body").textContent = texto;
+
+            chatMensajes.appendChild(div);
+            scrollAbajo();
+            return div;
+        }
+
+        function obtenerClaseCss(rol) {
+            if (rol === "Usuario") return "user";
+            if (rol === "IA") return "assistant";
+            if (rol === "Sistema") return "system";
+            return "system";
+        }
+
+        function obtenerEtiqueta(rol) {
+            if (rol === "Usuario") return "Tú";
+            if (rol === "IA") return "IA";
+            if (rol === "Sistema") return "Sistema";
+            return rol;
+        }
+
+        function scrollAbajo() {
+            chatMensajes.scrollTop = chatMensajes.scrollHeight;
+        }
+
+        function configurarControlesProcesando(estaProcesando) {
+            btnCancelar.disabled = !estaProcesando;
+            btnEnviar.disabled = estaProcesando || aprobacionPendienteActiva;
+            textoMensaje.disabled = estaProcesando || aprobacionPendienteActiva;
+        }
+
+    </script>
+}
